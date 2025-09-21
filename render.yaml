@@ -20,10 +20,10 @@ services:
     name: snaptika-frontend
     env: docker
     plan: free
-    dockerfilePath: frontend/Dockerfile
-    buildFilter:
-      paths:
-        - frontend/**
+    dockerfilePath: Dockerfile
+    buildCommand: npm run build
+    startCommand: nginx -g 'daemon off;'
+    buildContext: frontend
     envVars:
       - key: NODE_ENV
         value: production
