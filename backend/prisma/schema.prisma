@@ -1,0 +1,329 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  username  String   @unique
+  password  String
+  firstName String?
+  lastName  String?
+  bio       String?
+  avatar    String?
+  verified  Boolean  @default(false)
+  isPrivate Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  
+  // Monetization status
+  monetizationStatus MonetizationStatus @default(NOT_ELIGIBLE)
+  monetizationRequestedAt DateTime?
+  monetizationApprovedAt DateTime?
+  
+  // Profile settings
+  dateOfBirth DateTime?
+  phone       String?
+  website     String?
+  location    String?
+  
+  // Stats
+  followersCount Int @default(0)
+  followingCount Int @default(0)
+  postsCount     Int @default(0)
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastActive DateTime @default(now())
+  
+  // Relations
+  posts     Post[]
+  stories   Story[]
+  likes     Like[]
+  comments  Comment[]
+  
+  // Following relationships
+  following Follow[] @relation("UserFollowing")
+  followers Follow[] @relation("UserFollowers")
+  
+  // Notifications
+  sentNotifications     Notification[] @relation("NotificationSender")
+  receivedNotifications Notification[] @relation("NotificationReceiver")
+  
+  // Monetization
+  monetizationRequests MonetizationRequest[]
+  adRevenues          AdRevenue[]
+  
+  // Moderation
+  reports    Report[] @relation("ReportedUser")
+  reportedBy Report[] @relation("ReporterUser")
+  
+  @@map("users")
+}
+
+model Post {
+  id          String    @id @default(uuid())
+  authorId    String
+  caption     String?
+  mediaUrls   String[]
+  mediaType   MediaType
+  duration    Int?      // For videos in seconds
+  hashtags    String[]
+  location    String?
+  isArchived  Boolean   @default(false)
+  
+  // Stats
+  likesCount    Int @default(0)
+  commentsCount Int @default(0)
+  viewsCount    Int @default(0)
+  sharesCount   Int @default(0)
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  likes    Like[]
+  comments Comment[]
+  views    PostView[]
+  reports  Report[]
+  
+  @@map("posts")
+}
+
+model Story {
+  id        String    @id @default(uuid())
+  authorId  String
+  mediaUrl  String
+  mediaType MediaType
+  caption   String?
+  duration  Int?      // For videos in seconds
+  
+  // Stats
+  viewsCount Int @default(0)
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  expiresAt DateTime // Stories expire after 24 hours
+  
+  // Relations
+  author User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  views  StoryView[]
+  
+  @@map("stories")
+}
+
+model Like {
+  id     String @id @default(uuid())
+  userId String
+  postId String
+  
+  createdAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, postId])
+  @@map("likes")
+}
+
+model Comment {
+  id       String  @id @default(uuid())
+  userId   String
+  postId   String
+  content  String
+  parentId String? // For reply comments
+  
+  // Stats
+  likesCount Int @default(0)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post   Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parent Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies Comment[] @relation("CommentReplies")
+  
+  @@map("comments")
+}
+
+model Follow {
+  id          String @id @default(uuid())
+  followerId  String
+  followingId String
+  
+  createdAt DateTime @default(now())
+  
+  follower  User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+  
+  @@unique([followerId, followingId])
+  @@map("follows")
+}
+
+model PostView {
+  id     String @id @default(uuid())
+  userId String
+  postId String
+  
+  // View duration for monetization calculation
+  duration Int // In seconds
+  
+  createdAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, postId])
+  @@map("post_views")
+}
+
+model StoryView {
+  id      String @id @default(uuid())
+  userId  String
+  storyId String
+  
+  createdAt DateTime @default(now())
+  
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, storyId])
+  @@map("story_views")
+}
+
+model Notification {
+  id         String           @id @default(uuid())
+  senderId   String?
+  receiverId String
+  type       NotificationType
+  title      String
+  message    String
+  data       Json?            // Additional data (postId, etc.)
+  isRead     Boolean          @default(false)
+  
+  createdAt DateTime @default(now())
+  
+  sender   User? @relation("NotificationSender", fields: [senderId], references: [id], onDelete: SetNull)
+  receiver User  @relation("NotificationReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  
+  @@map("notifications")
+}
+
+model MonetizationRequest {
+  id       String                    @id @default(uuid())
+  userId   String
+  status   MonetizationRequestStatus @default(PENDING)
+  reason   String?                   // Rejection reason or additional notes
+  
+  // User stats at time of request
+  followersCount Int
+  viewsCount     Int // Views in last 30 days on videos >=3 minutes
+  
+  createdAt  DateTime  @default(now())
+  reviewedAt DateTime?
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("monetization_requests")
+}
+
+model AdRevenue {
+  id       String  @id @default(uuid())
+  userId   String
+  amount   Decimal @db.Decimal(10, 2)
+  currency String  @default("USD")
+  period   String  // Format: "YYYY-MM"
+  
+  // Revenue breakdown
+  impressions Int
+  clicks      Int
+  cpm         Decimal @db.Decimal(10, 4) // Cost per mille
+  ctr         Decimal @db.Decimal(5, 4)  // Click-through rate
+  
+  createdAt DateTime @default(now())
+  paidAt    DateTime?
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, period])
+  @@map("ad_revenues")
+}
+
+model Report {
+  id       String     @id @default(uuid())
+  reporterId String
+  reportedUserId String?
+  postId   String?
+  reason   ReportReason
+  description String?
+  status   ReportStatus @default(PENDING)
+  
+  createdAt  DateTime  @default(now())
+  reviewedAt DateTime?
+  
+  reporter     User  @relation("ReporterUser", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedUser User? @relation("ReportedUser", fields: [reportedUserId], references: [id], onDelete: SetNull)
+  post         Post? @relation(fields: [postId], references: [id], onDelete: SetNull)
+  
+  @@map("reports")
+}
+
+// Enums
+enum MediaType {
+  IMAGE
+  VIDEO
+  CAROUSEL
+}
+
+enum MonetizationStatus {
+  NOT_ELIGIBLE
+  ELIGIBLE
+  REQUESTED
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum MonetizationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NotificationType {
+  LIKE
+  COMMENT
+  FOLLOW
+  MENTION
+  MONETIZATION_APPROVED
+  MONETIZATION_REJECTED
+  POST_FEATURED
+  SYSTEM
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  INAPPROPRIATE_CONTENT
+  COPYRIGHT
+  FAKE_ACCOUNT
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
