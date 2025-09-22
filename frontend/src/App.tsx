@@ -1,4 +1,5 @@
 import React from 'react';
+// Trigger redeploy: App.tsx last touched on 2025-09-22
 import { BrowserRouter as Router } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { ApolloProvider } from '@apollo/client';
